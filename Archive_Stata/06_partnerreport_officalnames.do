@@ -3,11 +3,11 @@
 **   Aaron Chafetz
 **   Purpose: correct naming partner and mechanism names to offical source
 **   Date: November 22, 2016
-**   Updated: 8/23/17
+**   Updated: 5/8/2018
 
 /* NOTES
-	- Data source: FACTS Info, May 25, 2017
-	- mechanism partner list COP 2014-2017
+	- Data source: FACTS Info, March 3, 2018
+	- mechanism partner list COP 2016-2018
 */
 ********************************************************************************
 
