@@ -1,10 +1,10 @@
 **   Partner Performance Report
-**   COP FY16
+**   COP FY18
 **   Aaron Chafetz
 **   Purpose: Initialize folder structure and global file paths
 **   Adapted from Tim Essam, USAID
 **   Date: June 16, 2016
-**   Updated: 7/6/16
+**   Updated: 5/8/2018
 
 ** SET DIRECTORIES **
 
