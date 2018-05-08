@@ -11,25 +11,25 @@
 */
 ********************************************************************************
 
-global datetime "20170822"
+global datetime "201803291002"
 
 *import data
-	import excel using "$data/FY12-16 Standard COP Matrix Report-${datetime}.xls", ///
+	import excel using "$data/FY16-18 Standard COP Matrix Report-${datetime}.xls", ///
 		cellrange(A3) case(lower) clear
 
 *rename variables
 	rename A operatingunit
 	rename B mechanismid
 
-	local copyr 2014
-	foreach v of varlist C E G I {
+	local copyr 2016
+	foreach v of varlist C E G {
 		rename `v' primepartner`copyr'
 		local copyr = `copyr' + 1
 		}
 		*end
 		
-	local copyr 2014
-	foreach v of varlist D F H J {
+	local copyr 2016
+	foreach v of varlist D F H {
 		rename `v' implementingmechanismname`copyr'
 		local copyr = `copyr' + 1
 		}
@@ -39,7 +39,7 @@ global datetime "20170822"
 	foreach y in primepartner implementingmechanismname{
 		gen `y' = ""
 		gen `y'yr =.
-		foreach x in 2014 2015 2016 2017{
+		foreach x in 2016 2017 2018{
 			replace `y' = `y'`x' if `y'`x'!=""
 			replace `y'yr = `x' if `y'`x'!=""
 			}

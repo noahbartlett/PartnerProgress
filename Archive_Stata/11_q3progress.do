@@ -19,11 +19,11 @@
 		global date = subinstr("`c(current_date)'", " ", "", .)
 		
 	*set date of frozen instance - needs to be changed w/ updated data
-		global datestamp "20170702_v2_1"
+		global datestamp "20180323_v2_1"
 		
 	*import/open data
-		use "$fvdata/ICPI_FactView_OU_IM_${datestamp}.dta", clear
-
+*		use "$fvdata/ICPI_MER_Structured_Dataset_OU_IM_${datestamp}.dta", clear
+		import delimited "$data/ICPI_MER_Structured_Dataset_OU_IM_${datestamp}.txt", clear
 	
 ** WRANGLING **
 	
@@ -34,30 +34,31 @@
 	
 	*add future quarters in 
 		foreach x in q2 q3 q4 apr{
-			capture confirm variable fy2017`x'
-			if _rc gen fy2017`x' = .
+			capture confirm variable fy2018`x'
+			if _rc gen fy2018`x' = .
 			}
 			*end
 			
 	*create cumulative variable to sum up necessary variables
-		egen fy2017cum = rowtotal(fy2017q*)
-			replace fy2017cum = . if fy2017cum==0
+		egen fy2018cum = rowtotal(fy2018q*)
+			replace fy2018cum = . if fy2018cum==0
 		*adjust "snapshot" indicators since they are already cumulative
 		local i 2 
-		replace fy2017cum = fy2017q`i' if inlist(indicator, "OVC_SERV", ///
+		replace fy2018cum = fy2018q`i' if inlist(indicator, "OVC_SERV", ///
 			"TX_CURR")
-		replace fy2017cum =. if fy2017cum==0 //should be missing, but 0 due to egen
+		replace fy2018cum =. if fy2018cum==0 //should be missing, but 0 due to egen
 
-	*remove rows with no data (ie keep rows that contain FY16/17 data)
+	*remove rows with no data (ie keep rows that contain FY16/17/18 data)
 		egen kp = rowtotal(fy2016q1 fy2016q2 fy2016q3 fy2016q4 fy2016_targets ///
-			fy2017q1 fy2017q2 fy2017_targets)
+			fy2017q1 fy2017q2 fy2017q3 fy2017q4 fy2017_targets ///
+			fy2018q1 fy2018_targets)
 			drop if kp==0
 			drop kp
 			
 	*update all partner and mech to offical names (based on FACTS Info)
 		*tostring mechanismid, replace
 		preserve
-		run 06_partnerreport_officalnames
+		run $projectpath/Archive_Stata/06_partnerreport_officalnames
 		restore
 		merge m:1 mechanismid using "$output/officialnames.dta", ///
 			update replace nogen keep(1 3 4 5) //keep all but non match from using
@@ -104,25 +105,26 @@
 		format qdate %tq
 
 	*create moving average for projection
-		* moving average from prior 6 quarters
+		* moving average from prior 9 quarters
 		* FY16Q1 - 224, FY17Q3 - 230, FY17Q4 - 231
-		* FY17Q3 moving average
-		bysort pnl: egen avg_gr = mean(gr) if inrange(qdate,224,231) //moving average mech/ind over past 6 quarters
-			replace avg_gr = . if !inlist(qdate, 230, 231) //remove ma from other quaters
-		bysort ind: egen avg_gr_overall = mean(gr) if inrange(qdate,224,231) //average ind growth over past 6 quarters if mech doesn't have data
-			replace avg_gr_overall = . if !inlist(qdate, 230, 231)
-			replace avg_gr = avg_gr_overall if avg_gr== . & inlist(qdate, 230, 231)
+		* FY18Q1 - 232, FY18Q2 - 233, FY18Q3 - 234, FY18Q4 - 235
+		* FY18Q4 moving average
+		bysort pnl: egen avg_gr = mean(gr) if inrange(qdate,224,235) //moving average mech/ind over past 9 quarters
+			replace avg_gr = . if !inrange(qdate, 233, 235) //remove ma from other quaters
+		bysort ind: egen avg_gr_overall = mean(gr) if inrange(qdate,224,235) //average ind growth over past 9 quarters if mech doesn't have data
+			replace avg_gr_overall = . if !inrange(qdate, 233, 235)
+			replace avg_gr = avg_gr_overall if avg_gr== . & inrange(qdate, 233, 235)
 			
 	*sort variables and add projected FYQ3 and Q4 data using moving average
 		sort pnl qdate indicator
-		replace fy = round((1+ avg_gr)*L.fy, 1) if inlist(qdate, 230, 231)
+		replace fy = round((1+ avg_gr)*L.fy, 1) if inrange(qdate, 233, 235)
 
 	*drop variables created in process
 		drop qdate ind gr avg_gr_overall
 		replace avg_gr = round(avg_gr, .001)
 	*reshape back to original fact view setup
 		reshape wide fy avg_gr, i(pnl) j(qtr, string)
-		rename avg_gr2017q3 avg_gr
+		rename avg_gr2018q2 avg_gr
 		ds avg_gr2*
 		drop `r(varlist)' pnl
 		order operatingunit-indicator
@@ -132,14 +134,15 @@
 			implementingmechanismname indicator using "$output/extradata.dta", nogen
 		order fy2015apr fy2016_targets, after(fy2015q4)
 		order fy2016apr fy2017_targets, after(fy2016q4)
-		order avg_gr, after(fy2017cum)
+		order fy2017apr fy2018_targets, after(fy2017q4)
+		order avg_gr, after(fy2018cum)
 		
 	*create APR variable
-		egen fy2017apr_p = rowtotal(fy2017q1 fy2017q2 fy2017q3 fy2017q4)
-			replace fy2017apr_p = fy2017q4 if inlist(indicator, "TX_CURR", "OVC_SERV")
-			replace fy2017apr = fy2017apr_p
-			drop fy2017apr_p
-			recode fy2017apr (0 = .)	
+		egen fy2018apr_p = rowtotal(fy2018q1 fy2018q2 fy2018q3 fy2018q4)
+			replace fy2018apr_p = fy2018q4 if inlist(indicator, "TX_CURR", "OVC_SERV")
+			replace fy2018apr = fy2018apr_p
+			drop fy2018apr_p
+			recode fy2018apr (0 = .)	
 		
 		
 ** TX_NET_NEW **
@@ -149,7 +152,7 @@
 			replace indicator= "TX_NET_NEW" if new==1 //rename duplicate TX_NET_NEW
 			drop new
 	*create copy periods to replace "." w/ 0 for generating net new (if . using in calc --> answer == .)
-		foreach x in fy2015q2 fy2015q4 fy2016q2 fy2016q4 fy2017q1 fy2017q2 fy2017q3 fy2017q4 fy2017_targets{
+		foreach x in fy2015q2 fy2015q4 fy2016q2 fy2016q4 fy2016_targets fy2017q1 fy2017q2 fy2017q3 fy2017q4 fy2017_targets fy2018q1 fy2018q2 fy2018q3 fy2018q4 fy2018_targets{
 			clonevar `x'_cc = `x'
 			recode `x'_cc (. = 0) 
 			}
@@ -173,10 +176,21 @@
 		gen fy2017_targets_nn = fy2017_targets_cc - fy2016q4_cc
 			replace fy2017_targets_nn = . if fy2017_targets==. & fy2016q4==.
 		egen fy2017apr_nn = rowtotal(fy2017q1_nn fy2017q2_nn fy2017q3_nn fy2017q4_nn)
+		gen fy2018q1_nn = fy2018q1_cc-fy2017q4_cc
+			replace fy2018q1_nn = . if (fy2018q1==. & fy2017q4==.)
+		gen fy2018q2_nn = fy2018q2_cc-fy2018q1_cc
+			replace fy2018q2_nn = . if (fy2018q2==. & fy2018q1==.)
+		gen fy2018q3_nn = fy2018q3_cc-fy2018q2_cc
+			replace fy2018q3_nn = . if (fy2018q3==. & fy2018q2==.)	
+		gen fy2018q4_nn = fy2018q4_cc-fy2018q3_cc
+			replace fy2018q4_nn = . if (fy2018q4==. & fy2018q3==.)	
+		gen fy2018_targets_nn = fy2018_targets_cc - fy2017q4_cc
+			replace fy2018_targets_nn = . if fy2018_targets==. & fy2017q4==.
+		egen fy2018apr_nn = rowtotal(fy2018q1_nn fy2018q2_nn fy2018q3_nn fy2018q4_nn)
 		drop *_cc
 		
 	*replace raw period values with generated net_new values
-		foreach x in fy2015q4 fy2016q2 fy2016q4 fy2016apr fy2017q1 fy2017q2 fy2017q3 fy2017q4 fy2017apr fy2017_targets{
+		foreach x in fy2015q4 fy2016q2 fy2016q4 fy2016apr fy2017q1 fy2017q2 fy2017q3 fy2017q4 fy2017apr fy2017_targets fy2018q1 fy2018q2 fy2018q3 fy2018q4 fy2018apr fy2018_targets{
 			replace `x' = `x'_nn if indicator=="TX_NET_NEW"
 			drop `x'_nn
 			}
@@ -230,12 +244,13 @@
 			fundingagency primepartner mechanismid implementingmechanismname ///
 			indicator fy2016_targets fy2016q1 fy2016q2 fy2016q2 fy2016q3 ///
 			fy2016q4 fy2016apr fy2017_targets fy2017q1 fy2017q2 fy2017q3 ///
-			fy2017q4 fy2017apr fy2017cum avg_gr
+			fy2017q4 fy2017apr fy2018_targets fy2018q1 fy2018q2 fy2018q3 ///
+			fy2018q4 fy2018apr fy2018cum avg_gr
 		keep `vars'
 		order `vars'
 		
 	*only keep USAID partners 
-		keep if fundingagency=="USAID"	
+*		keep if fundingagency=="USAID"	
 		
 	*order indicators
 		preserve
@@ -266,10 +281,14 @@
 		drop ind2
 		
 	*export
-		export delimited using "$excel/progressq3", nolabel replace dataf
+		export delimited using "$data/progressq3", nolabel replace dataf
 		
 	*remove intermediate dataset
 		foreach x in extradata nearfinaldata lnkgdata {
 			rm "$output/`x'.dta"
 			}
 			*end
+
+			
+
+

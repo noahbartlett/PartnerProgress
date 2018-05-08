@@ -14,7 +14,7 @@
 *  must be run each time Stata is opened
 	/* Choose the project path location to where you want the project parent 
 	   folder to go on your machine. Make sure it ends with a forward slash */
-	global projectpath "C:\Users\achafetz\Documents\GitHub\"
+	global projectpath "C:\Users\nbartlett\Documents\GitHub"
 	cd "$projectpath"
 	
 * Run a macro to set up study folder
@@ -52,7 +52,6 @@
 	global excel "$projectpath/ExcelOutput"
 	*this folders path is in a seperate file location due to data size and usage
 	*you can change these directories to point to $data on your machine
-	global fvdata "C:/Users/achafetz/Documents/ICPI/Data"
 	disp as error "If initial setup, move data to RawData folder."
 
 ********************************************************************************
