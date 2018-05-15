@@ -1,15 +1,21 @@
 **   Partner Performance
-**   FY1&
+**   FY18 Q2
 **   Aaron Chafetz
 **   Purpose: project out APR results 
-**   Updated: July 27, 2017
+**   Updated: May 10, 2018
 
 /* NOTES
 	- builds off structure of PPR base dataset
-	- Data source: ICPI_Fact_View_OU_IM
-	- run 00_initialize prior to using this do file
-	- requires 06_partnerreport_officalnames to be saved in project folder
+	- Data source: ICPI_MER_Structured_Dataset_OU_IM
+	- run prior to using this do file:
+			00_partnerreport_initialize 
+			06_partnerreport_officalnames
+
+			
+	Lines where changes will need to be made when FY18Q2 data are in:
+	28, 42, 60, 118, 121, 279
 */
+
 
 ********************************************************************************
 
@@ -30,10 +36,10 @@
 	*keep only relevant indicators for analysis
 		keep if ///
 			inlist(indicator, "HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", ///
-			"TX_NET_NEW", "PMTCT_STAT") & disaggregate=="Total Numerator"
+			"TX_NET_NEW", "PMTCT_STAT") & standardizeddisaggregate=="Total Numerator"
 	
 	*add future quarters in 
-		foreach x in q2 q3 q4 apr{
+		foreach x in q2 q3 q4 apr{               
 			capture confirm variable fy2018`x'
 			if _rc gen fy2018`x' = .
 			}
@@ -98,35 +104,50 @@
 	*identify dataset as timeseries
 		tsset pnl qdate
 
-	*create growth rate to moving average from - (pd_current-pd_prior)/pd_prior
-		gen gr = D.fy/L.fy
-
 	*format date
 		format qdate %tq
+		
+	*create average quarterly growth rate(AQGR)  
+	* [((Ending value / Beginning value) ^(1/n-1)) – 1 ] (where n is the number of quarters of data)
 
-	*create moving average for projection
-		* moving average from prior 9 quarters
+		* Quarterly qdates
 		* FY16Q1 - 224, FY17Q3 - 230, FY17Q4 - 231
 		* FY18Q1 - 232, FY18Q2 - 233, FY18Q3 - 234, FY18Q4 - 235
-		* FY18Q4 moving average
-		bysort pnl: egen avg_gr = mean(gr) if inrange(qdate,224,235) //moving average mech/ind over past 9 quarters
-			replace avg_gr = . if !inrange(qdate, 233, 235) //remove ma from other quaters
-		bysort ind: egen avg_gr_overall = mean(gr) if inrange(qdate,224,235) //average ind growth over past 9 quarters if mech doesn't have data
-			replace avg_gr_overall = . if !inrange(qdate, 233, 235)
-			replace avg_gr = avg_gr_overall if avg_gr== . & inrange(qdate, 233, 235)
-			
-	*sort variables and add projected FYQ3 and Q4 data using moving average
-		sort pnl qdate indicator
-		replace fy = round((1+ avg_gr)*L.fy, 1) if inrange(qdate, 233, 235)
 
+		
+		recode fy (. = 0) if qdate > 232
+		drop  if fy ==.
+		
+		foreach p in 232 233 234{
+				
+		bysort pnl: egen min_q = min(qdate) if fy != 0
+		bysort pnl: gen max_q = `p' 		if fy != 0
+		gen n = max_q - min_q
+
+		bysort pnl: gen min_v = fy if min_q == qdate
+		bysort pnl: gen max_v = fy if qdate	== `p' 	
+		
+		bysort pnl: egen min_v2 = min(min_v)
+		bysort pnl: egen max_v2 = min(max_v)		
+		
+		gen gr = ((max_v2/min_v2)^(1/(n-1)))-1
+		
+					
+	*sort variables and add projected FYQ3 and Q4 data AQGR
+		sort pnl qdate indicator
+		replace fy = round((1+ L.gr)*L.fy, 1) if qdate == `p'+1
+		drop min_q - gr
+		}
+		* end	
+		
+		
+		
 	*drop variables created in process
-		drop qdate ind gr avg_gr_overall
-		replace avg_gr = round(avg_gr, .001)
+		drop ind qdate
+	
 	*reshape back to original fact view setup
-		reshape wide fy avg_gr, i(pnl) j(qtr, string)
-		rename avg_gr2018q2 avg_gr
-		ds avg_gr2*
-		drop `r(varlist)' pnl
+		reshape wide fy, i(pnl) j(qtr, string)
+		drop pnl
 		order operatingunit-indicator
 
 	*merge targets and cumulative variables back in and reorder
@@ -135,7 +156,6 @@
 		order fy2015apr fy2016_targets, after(fy2015q4)
 		order fy2016apr fy2017_targets, after(fy2016q4)
 		order fy2017apr fy2018_targets, after(fy2017q4)
-		order avg_gr, after(fy2018cum)
 		
 	*create APR variable
 		egen fy2018apr_p = rowtotal(fy2018q1 fy2018q2 fy2018q3 fy2018q4)
@@ -200,57 +220,21 @@
 			replace `pd' = . if indicator=="TX_NET_NEW"
 			}
 			*end
-	*save before Linkage adjustment
+	*save 
 		save "$output/nearfinaldata.dta", replace
-		
-** Linkage **
-		
-	*linkage = TX_NEW/HTS_TST_POS
-		keep if inlist(indicator, "HTS_TST_POS", "TX_NEW")
-		drop avg_gr
-	*reshape long to allow dataset to become a timeseries & transform time variable to date format
-		egen id = group(operatingunit primepartner fundingagency mechanismid ///
-			implementingmechanismname indicator)
-		reshape long fy, i(id) j(qtr, string)
-		drop id
-		
-	*recode 0s to missing
-		recode fy (0 = .)
-		
-	*reshape for calculation
-		reshape wide fy, i(qtr operatingunit primepartner fundingagency mechanismid implementingmechanismname) j(indicator, string)
-	
-	*calc linkage
-		gen fyLINKAGE = round(fyTX_NEW/fyHTS_TST_POS, .001)
-	
-	*reshape back to long & only keep linkage data
-		reshape long
-		keep if indicator=="LINKAGE" & fy!=.
-		
-	*reshape wide to append to original dataset	
-		reshape wide fy, i(operatingunit primepartner fundingagency mechanismid implementingmechanismname indicator) j(qtr, string)
-	
-	*save
-		replace indicator = "LINKAGE (HTS to TX)"
-		save "$output/lnkgdata.dta", replace
-		
-** FINAL CLEANUP & EXPORT			
-	* reopen 
-		use "$output/nearfinaldata.dta", clear
-		append using "$output/lnkgdata.dta"
-		
+
 	*delete extrainous vars/obs
 		local vars operatingunit ///
 			fundingagency primepartner mechanismid implementingmechanismname ///
 			indicator fy2016_targets fy2016q1 fy2016q2 fy2016q2 fy2016q3 ///
 			fy2016q4 fy2016apr fy2017_targets fy2017q1 fy2017q2 fy2017q3 ///
 			fy2017q4 fy2017apr fy2018_targets fy2018q1 fy2018q2 fy2018q3 ///
-			fy2018q4 fy2018apr fy2018cum avg_gr
+			fy2018q4 fy2018apr fy2018cum
 		keep `vars'
 		order `vars'
 		
-	*only keep USAID partners 
-*		keep if fundingagency=="USAID"	
+	*only keep USAID and CDC partners 
+		keep if inlist(fundingagency, "USAID", "HHS/CDC")
 		
 	*order indicators
 		preserve
@@ -259,10 +243,9 @@
 			1 "HTS_TST"
 			2 "HTS_TST_POS"
 			3 "TX_NEW"
-			4 "LINKAGE (HTS to TX)"
-			5 "TX_CURR"
-			6 "TX_NET_NEW"
-			7 "PMTCT_STAT"
+			4 "TX_CURR"
+			5 "TX_NET_NEW"
+			6 "PMTCT_STAT"
 		end
 		tempfile temp_ind
 		save "`temp_ind'"
@@ -280,11 +263,23 @@
 		sort operatingunit mechanismid ind2
 		drop ind2
 		
+	*rename variables 
+		rename fy20* fy*
+		rename fy*, upper
+		rename *_TARGETS *_Targets
+		rename *APR *_APR
+
+		foreach v of varlist operatingunit-implementingmechanismname {
+		local x : variable label `v'
+		rename `v' `x'
+		}
+		*end
+		
 	*export
-		export delimited using "$data/progressq3", nolabel replace dataf
+		export delimited using "$excel/progress_FY18Q3", nolabel replace dataf
 		
 	*remove intermediate dataset
-		foreach x in extradata nearfinaldata lnkgdata {
+		foreach x in extradata nearfinaldata  {
 			rm "$output/`x'.dta"
 			}
 			*end
