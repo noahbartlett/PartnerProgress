@@ -1,8 +1,8 @@
 **   Partner Performance
-**   FY1&
+**   FY18 Q2-4
 **   Aaron Chafetz
 **   Purpose: project out APR results 
-**   Updated: July 27, 2017
+**   Updated: 5/8/2018
 
 /* NOTES
 	- builds off structure of PPR base dataset
